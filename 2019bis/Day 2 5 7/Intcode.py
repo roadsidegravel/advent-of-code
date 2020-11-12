@@ -1,10 +1,12 @@
 class computer:
-    def __init__(self,intcode):
+    def __init__(self,intcode,automaticMode = False):
+        self.automaticMode = automaticMode
         self.intcode = []
         self.running = False
         self.position = 0
         self.inputs = []
         self.outputs = []
+        self.log = []
         for i in range(0,len(intcode)):
             self.intcode.append(intcode[i])
     #https://stackoverflow.com/questions/15189245/assigning-class-variable-as-default-value-to-class-method-argument
@@ -23,9 +25,9 @@ class computer:
             self.D = 0 #opcode first digit
             self.E = 0 #opcode second digit
             arrayParam = self.buildParamArray(str(oneIntcode))
-            self.A = self.checkZeroOrOne(arrayParam[0], 'Parameter A')
-            self.B = self.checkZeroOrOne(arrayParam[1], 'Parameter B')
-            self.C = self.checkZeroOrOne(arrayParam[2], 'Parameter C')
+            self.A = self.checkZeroOrOneOrTwo(arrayParam[0], 'Parameter A')
+            self.B = self.checkZeroOrOneOrTwo(arrayParam[1], 'Parameter B')
+            self.C = self.checkZeroOrOneOrTwo(arrayParam[2], 'Parameter C')
             self.D = arrayParam[3]
             self.E = arrayParam[4]
 
@@ -35,11 +37,11 @@ class computer:
                 result[-i] = int(intcodeString[-i])
             return result.copy()
 
-        def checkZeroOrOne(self,value,valueNameForErrorMessage):
-            if value == 0 or value == 1:
+        def checkZeroOrOneOrTwo(self,value,valueNameForErrorMessage):
+            if value == 0 or value == 1 or value == 2:
                 return value
             else:
-                raise ValueError(f'{valueNameForErrorMessage} should be 1 or 0, not {value}')
+                raise ValueError(f'{valueNameForErrorMessage} should be 0, 1 or 2. Not {value}')
 
         def returnModes(self):
             result = computer.modes(self.A,self.B,self.C)
@@ -47,7 +49,6 @@ class computer:
 
     def run(self):
         self.running = True
-        self.log = []
         while self.running:
             self.log.append(self.takeStep())
 
@@ -138,24 +139,34 @@ class computer:
         return f'opcode 2 at position {position} processed'
 
     def opcode3(self,position,modes):
-        #input
         if len(self.inputs) > 0:
             inputReceived = self.inputs[0]
             self.inputs = self.inputs[1:]
         else:
-            inputReceived = input('Enter an integer: ')
+            if self.automaticMode:
+                # wait for input
+                self.running = False
+                return f'pausing for input at position {position}'
+            else:
+                inputReceived = input('Enter an integer: ')
         try:
             intInputReceived = int(inputReceived)
         except:
             raise ValueError('I said, an integer.')
-        self.writeToFirst(position,modes,intInputReceived)
+        self.writeToFirst(position, modes, intInputReceived)
         self.position += 2
         return f'opcode 3 at position {position} processed'
+
+    def automaticModeTakeInputAndUnpauze(self,singleInput):
+        self.inputs.append(singleInput)
+        self.running = True
+        self.run()
 
     def opcode4(self,position,modes):
         #output
         result = self.retrieveFirst(position,modes)
-        print(result)
+        if not self.automaticMode:
+            print(result)
         self.outputs.append(result)
         self.position +=2
         return f'opcode 4 at position {position} processed'
@@ -201,3 +212,155 @@ class computer:
         self.writeToThird(position,modes,result)
         self.position +=4
         return f'opcode 8 at position {position} processed'
+
+def constructComputerFromFile(path):
+    rawData = []
+    with open(path) as file:
+        rawData = file.readlines()
+
+    rawIntcode = rawData[0].split(',')
+    intcode = []
+    for i in range(0, len(rawIntcode)):
+        intcode.append(int(rawIntcode[i]))
+    result = computer(intcode)
+    return result
+
+class amplifier:
+    def __init__(self,intcode,phaseSetting):
+        automaticMode = True
+        self.computer = computer(intcode,automaticMode)
+        self.takeInput(phaseSetting)
+
+    def takeInput(self,value):
+        self.computer.automaticModeTakeInputAndUnpauze(value)
+
+    def takeOutput(self):
+        return self.computer.outputs[-1]
+
+class amplifiersInSeries:
+    def __init__(self,intcode,phaseSettings):
+        stringPhaseSettings = str(phaseSettings)
+        self.ampList = []
+        for i in range(0,len(stringPhaseSettings)):
+            self.ampList.append(amplifier(intcode,stringPhaseSettings[i]))
+        self.ampList[0].takeInput(0)
+        for i in range(1,len(stringPhaseSettings)):
+            self.ampList[i].takeInput(self.ampList[i-1].takeOutput())
+
+    def giveFinalOutput(self):
+        return self.ampList[-1].takeOutput()
+
+
+def constructAmplifiersInSeriesFromFile(path,phaseSettings):
+    rawData = []
+    with open(path) as file:
+        rawData = file.readlines()
+    splitData = rawData[0].split(',')
+    cleanedData = [int(i) for i in splitData]
+    return amplifiersInSeries(cleanedData,phaseSettings)
+
+class FindMaxThrusterSignalFromPath:
+    def __init__(self,path):
+        self.path = path
+        self.amplifierSettingsList = self.returnListOfValidPhaseSettings()
+        self.highestThrusterSignal = 0
+        self.findHighestThrusterSignal()
+
+    def returnListOfValidPhaseSettings(self):
+        result = []
+        numbers = ['0','1','2','3','4']
+        for i in range(0,len(numbers)):
+            first= numbers[i]
+            iRemoved = list(numbers)
+            iRemoved.remove(numbers[i])
+            for j in range(0,len(iRemoved)):
+                second = iRemoved[j]
+                ijRemoved = list(iRemoved)
+                ijRemoved.remove(iRemoved[j])
+                for k in range(0,len(ijRemoved)):
+                    third = ijRemoved[k]
+                    ijkRemoved = list(ijRemoved)
+                    ijkRemoved.remove(ijRemoved[k])
+                    for l in range(0,len(ijkRemoved)):
+                        fourth = ijkRemoved[l]
+                        ijklRemoved = list(ijkRemoved)
+                        ijklRemoved.remove(ijkRemoved[l])
+                        for m in range(0,len(ijklRemoved)):
+                            fifth = ijklRemoved[m]
+                            result.append(first+second+third+fourth+fifth)
+        return result
+
+    def findHighestThrusterSignal(self):
+        for ampSetting in self.amplifierSettingsList:
+            ampBank = constructAmplifiersInSeriesFromFile(self.path,ampSetting)
+            result = ampBank.giveFinalOutput()
+            if result > self.highestThrusterSignal:
+                self.highestThrusterSignal = result
+
+class amplifiersInSeriesWithFeedbackLoop:
+    def __init__(self,intcode,phaseSettings):
+        stringPhaseSettings = str(phaseSettings)
+        self.ampList = []
+        for i in range(0,len(stringPhaseSettings)):
+            self.ampList.append(amplifier(intcode,stringPhaseSettings[i]))
+        self.goThroughAmpList(0)
+
+    def goThroughAmpList(self,firstInput):
+        self.ampList[0].takeInput(firstInput)
+        for i in range(1,len(self.ampList)):
+            self.ampList[i].takeInput(self.ampList[i-1].takeOutput())
+        lastLog = self.ampList[-1].computer.log[-1]
+        if lastLog != 'opcode 99, exiting':
+            self.goThroughAmpList(self.ampList[-1].takeOutput())
+
+    def giveFinalOutput(self):
+        return self.ampList[-1].takeOutput()
+
+def constructAmplifiersInSeriesWithFeedbackLoopFromFile(path,phaseSettings):
+    rawData = []
+    with open(path) as file:
+        rawData = file.readlines()
+    splitData = rawData[0].split(',')
+    cleanedData = [int(i) for i in splitData]
+    return amplifiersInSeriesWithFeedbackLoop(cleanedData,phaseSettings)
+
+class FindMaxThrusterFeedbackLoopSignalFromPath:
+    def __init__(self,path):
+        self.path = path
+        self.amplifierSettingsList = self.returnListOfValidPhaseSettings()
+        self.highestThrusterSignal = 0
+        self.findHighestThrusterSignal()
+
+    def returnListOfValidPhaseSettings(self):
+        result = []
+        numbers = ['5','6','7','8','9']
+        for i in range(0,len(numbers)):
+            first= numbers[i]
+            iRemoved = list(numbers)
+            iRemoved.remove(numbers[i])
+            for j in range(0,len(iRemoved)):
+                second = iRemoved[j]
+                ijRemoved = list(iRemoved)
+                ijRemoved.remove(iRemoved[j])
+                for k in range(0,len(ijRemoved)):
+                    third = ijRemoved[k]
+                    ijkRemoved = list(ijRemoved)
+                    ijkRemoved.remove(ijRemoved[k])
+                    for l in range(0,len(ijkRemoved)):
+                        fourth = ijkRemoved[l]
+                        ijklRemoved = list(ijkRemoved)
+                        ijklRemoved.remove(ijkRemoved[l])
+                        for m in range(0,len(ijklRemoved)):
+                            fifth = ijklRemoved[m]
+                            result.append(first+second+third+fourth+fifth)
+        return result
+
+    def findHighestThrusterSignal(self):
+        for ampSetting in self.amplifierSettingsList:
+            ampBank = constructAmplifiersInSeriesWithFeedbackLoopFromFile(self.path,ampSetting)
+            result = ampBank.giveFinalOutput()
+            if result > self.highestThrusterSignal:
+                self.highestThrusterSignal = result
+
+
+
